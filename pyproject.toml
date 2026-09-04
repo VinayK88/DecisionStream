@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "decisionstream"
+version = "1.0.0"
+description = "Leakage-safe temporal security decisioning reference platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+  "streamlit>=1.36,<2",
+  "pandas>=2.0,<3",
+  "numpy>=1.26,<3",
+  "scikit-learn>=1.4,<2",
+  "plotly>=5.22,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+decisionstream = "engine:main"
+
+[tool.setuptools]
+py-modules = ["engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

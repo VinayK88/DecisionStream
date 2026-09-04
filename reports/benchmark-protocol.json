@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "project": "DecisionStream",
+  "synthetic": true,
+  "seed": 42,
+  "command": "python engine.py --out artifacts --rows 5000 --seed 42",
+  "outputs": [
+    "decision_replay.csv",
+    "benchmark_manifest.json",
+    "metrics.json"
+  ],
+  "temporal_guarantees": [
+    "chronological train/test split",
+    "10-minute prior-event window",
+    "24-hour prior-event window",
+    "historical-only device/account fanout"
+  ],
+  "ci_python": [
+    "3.10",
+    "3.11",
+    "3.12"
+  ],
+  "limitations": "Local event-time replay, not a live Kafka/Spark deployment. Latency, cost, loss, and outcomes are synthetic."
+}

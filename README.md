@@ -6,7 +6,7 @@
 
 **Real-time + batch security decisioning reference platform**
 
-`Streaming features` · `Batch aggregates` · `Policy actions` · `Shadow model` · `Replay` · `SQL`
+`Streaming features` · `Batch aggregates` · `Policy actions` · `Shadow model` · `Replay` · `SQL`\n\n[![CI](https://github.com/VinayK88/DecisionStream/actions/workflows/ci.yml/badge.svg)](https://github.com/VinayK88/DecisionStream/actions/workflows/ci.yml) [![Python](https://img.shields.io/badge/Python-3.10--3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
 
@@ -101,9 +101,15 @@ flowchart LR
 
 ## Dashboard
 
-The Streamlit UI uses the same restrained Apple-inspired design language as the rest of the portfolio: large typography, white space, soft gray surfaces, rounded cards, subtle borders/shadows, system-style fonts, and concise operational storytelling.
+The Streamlit UI emphasizes operational evidence, policy trade-offs, champion/challenger behavior, and replay inspection.
 
 The scorecard covers model quality, champion/challenger disagreement, allow/review/step-up/block mix, intervention rates, false-positive/false-negative behavior, latency, decision cost, replay size, feature-contract checks, synthetic event rate, prevented synthetic loss, high-value traffic, and business-risk efficiency.
+
+---
+
+## Temporal correctness
+
+Features are calculated in event-time order using only information available at the decision timestamp. The 10-minute and 24-hour velocities are genuine prior-event windows, device fan-out is historical-only, and the train/test split is chronological. Tests verify that appending a future event cannot change earlier feature values.
 
 ---
 
@@ -244,6 +250,14 @@ Promotion should require replay evidence across predictive quality, calibration,
 
 ---
 
+## Reproducible benchmark evidence
+
+CI validates Python 3.10–3.12, executes the leakage-safe replay, and uploads the scored decisions, metrics, and manifest. The manifest records the feature contract and a deterministic SHA-256 over the decision replay.
+
+See [the benchmark protocol](reports/benchmark-protocol.json) and [GitHub Actions](https://github.com/VinayK88/DecisionStream/actions).
+
+---
+
 ## Repository map
 
 ```text
@@ -265,7 +279,7 @@ Promotion should require replay evidence across predictive quality, calibration,
 ## Run locally
 
 ```bash
-pip install -r requirements.txt
+pip install -e '.[dev]'
 python engine.py --out artifacts
 streamlit run app.py
 ```
