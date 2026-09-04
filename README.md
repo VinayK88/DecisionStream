@@ -46,7 +46,7 @@ It is intentionally more than `CSV → model → accuracy`.
 | **Business** | expected synthetic loss, prevented synthetic loss, intervention efficiency |
 | **Governance** | shadow-model disagreement and no automatic challenger promotion |
 
-The dashboard now exposes **30+ ML, operational, policy, and business KPIs**.
+The dashboard exposes **30+ ML, operational, policy, and business KPIs**.
 
 ---
 
@@ -63,19 +63,7 @@ device_account_fanout high
 prior_review_rate     elevated
 ```
 
-### Step 1 — join two time horizons
-
-The streaming path contributes what happened **just now**. The batch path contributes what has happened **over time**.
-
-### Step 2 — score with the champion
-
-```text
-Champion score:   0.71
-Challenger score: 0.78
-Shadow disagreement: 0.07
-```
-
-### Step 3 — apply policy
+The streaming path contributes what happened **just now**. The batch path contributes what has happened **over time**. The champion and challenger score the same joined feature vector, the champion controls the policy action, and the decision log stores the features, both scores, action, latency, cost, and eventual synthetic outcome.
 
 Default policy thresholds:
 
@@ -85,19 +73,6 @@ score < 0.38        → ALLOW
 0.64 – 0.82         → STEP_UP
 score ≥ 0.82        → BLOCK
 ```
-
-A score of `0.71` becomes `STEP_UP`.
-
-### Step 4 — write the decision log
-
-The replay record captures:
-
-```text
-features + champion score + challenger score + action
-+ latency + decision cost + synthetic outcome + prevented loss
-```
-
-That makes later regression testing possible without reconstructing the original decision from scattered logs.
 
 ---
 
@@ -128,40 +103,7 @@ flowchart LR
 
 The Streamlit UI uses the same restrained Apple-inspired design language as the rest of the portfolio: large typography, white space, soft gray surfaces, rounded cards, subtle borders/shadows, system-style fonts, and concise operational storytelling.
 
-### KPI families
-
-**Model quality**
-- champion PR-AUC / ROC-AUC
-- precision / recall at intervention
-- Brier calibration score
-- challenger PR-AUC
-- challenger lift
-- mean / P95 shadow disagreement
-
-**Policy health**
-- allow / review / step-up / block rate
-- intervention rate
-- high-impact action rate
-- false-positive rate at intervention
-- false-negative rate
-- top-decile event capture
-
-**Operations**
-- P50 / P95 decision latency
-- average and P95 decision cost
-- replay rows
-- training / scoring rows
-- feature-contract checks
-- replay window
-
-**Business / risk**
-- current synthetic event rate
-- adverse cases scored
-- prevented synthetic loss
-- prevented loss per intervention
-- prevented loss per 1K scored events
-- average event amount
-- high-value event share
+The scorecard covers model quality, champion/challenger disagreement, allow/review/step-up/block mix, intervention rates, false-positive/false-negative behavior, latency, decision cost, replay size, feature-contract checks, synthetic event rate, prevented synthetic loss, high-value traffic, and business-risk efficiency.
 
 ---
 
@@ -176,8 +118,6 @@ device_risk
 amount_log
 ```
 
-These represent signals that would typically be derived close to the decision time.
-
 ### Batch-style signals
 
 ```text
@@ -187,21 +127,107 @@ device_account_fanout
 account_age_signal
 ```
 
-These represent durable historical context.
-
 The local reference implementation computes both in pandas for reproducibility, while `sql/batch_features.sql` documents the batch-side aggregation contract.
+
+---
+
+## Connecting DecisionStream to real data
+
+DecisionStream is designed so the local synthetic generator can be replaced by an event bus plus a historical feature source without changing the core decision contract.
+
+### Streaming input contract
+
+```text
+event_id            string
+event_time          timestamp
+entity/account_id   string
+device_id           string optional
+amount/value        numeric optional
+stream features     numeric / categorical
+```
+
+### Batch feature contract
+
+A warehouse or lakehouse query should produce one row per decision entity/event with durable features such as:
+
+```text
+account_id
+batch_velocity_24h
+prior_review_rate
+device_account_fanout
+account_age_signal
+```
+
+`sql/batch_features.sql` is the reference starting point for this layer.
+
+### Practical integration options
+
+| Layer | Production option |
+|---|---|
+| **Event ingestion** | Kafka, Azure Event Hubs, AWS Kinesis, Pub/Sub |
+| **Batch/lakehouse** | Snowflake, Databricks, BigQuery, Spark, Delta Lake |
+| **Feature serving** | Feast, Redis, warehouse-backed online tables, custom feature service |
+| **Model serving** | FastAPI, Kubernetes service, managed inference endpoint |
+| **Decision telemetry** | Kafka topic, warehouse fact table, OpenTelemetry/log pipeline |
+| **Monitoring** | Streamlit for demo; Grafana, Power BI, Datadog, internal dashboards for production |
+
+A production adapter would typically look like:
+
+```text
+Kafka / Event Hubs
+      ↓
+stream feature transform
+      ↓
+lookup durable features from feature store / warehouse
+      ↓
+normalize into FEATURES contract
+      ↓
+champion + shadow challenger
+      ↓
+policy engine
+      ↓
+decision log + outcome join
+```
+
+The current local code can also ingest a flat Parquet/CSV replay exported from a warehouse. The required mapping is straightforward: rename the organization-specific columns to the feature contract, preserve event time/order, and retain the ground-truth or reviewed outcome for evaluation.
+
+### Example replay adapter
+
+```python
+import pandas as pd
+from engine import train_and_score, policy, FEATURES
+
+raw = pd.read_parquet("decision_replay.parquet").sort_values("event_time")
+# Map your real columns into FEATURES before scoring.
+train, scored = train_and_score(raw)
+scored["decision"] = policy(scored["champion_score"])
+```
+
+For high-scale environments, pandas should be replaced by Spark/SQL/stream processing for feature computation, while keeping the same feature definitions, policy thresholds, and replay schema so offline and online decisions remain comparable.
+
+---
+
+## Practical significance
+
+DecisionStream matters because a good model can still fail as a business system if its features are stale, joins are inconsistent, decisions are slow, policy thresholds are poorly chosen, or no replay evidence exists after an incident.
+
+It gives engineering and business teams a common decision record that can answer:
+
+- **What data was available at the exact decision time?**
+- **Which streaming and historical signals influenced the score?**
+- **What action did policy choose and why?**
+- **How much latency and operational cost did that decision require?**
+- **How often does the challenger disagree with the champion?**
+- **Would a threshold change improve risk capture without overwhelming review capacity or adding customer friction?**
+- **Can a release be replayed on historical decisions before promotion?**
+
+For a fraud or security program, this can reduce the gap between experimentation and production decisioning. The practical outcome is not merely “higher AUC”; it is a system capable of making a timely action, measuring its downstream effect, comparing alternative configurations under the same replay, and explaining the tradeoff to engineering and business stakeholders.
 
 ---
 
 ## SQL reference
 
-`sql/batch_features.sql` demonstrates windowed account history for:
-
-- 24-hour event velocity
-- prior review rate
-- event/account join keys
-
-The goal is not to pretend pandas is Spark. The goal is to keep a **portable feature contract** that could move into a distributed implementation while preserving the same replay/evaluation semantics.
+`sql/batch_features.sql` demonstrates windowed account history for 24-hour event velocity, prior review rate, and event/account join keys. The goal is to keep a **portable feature contract** that can move into a distributed implementation while preserving replay/evaluation semantics.
 
 ---
 
@@ -214,14 +240,7 @@ Champion → production-style decision
 Challenger → shadow score only
 ```
 
-The dashboard highlights large disagreement cases so an engineer can ask:
-
-- Is the challenger improving true positives?
-- Is it changing calibration?
-- Is it increasing review burden?
-- Does its lift hold across policy bands?
-
-Promotion should require replay evidence, not one better aggregate metric.
+Promotion should require replay evidence across predictive quality, calibration, policy mix, review burden, latency, and business outcomes rather than one better aggregate metric.
 
 ---
 
@@ -229,9 +248,9 @@ Promotion should require replay evidence, not one better aggregate metric.
 
 ```text
 .
-├── app.py                     # Apple-inspired operations dashboard
-├── engine.py                  # generator, features, scoring, policy, replay
-├── sql/batch_features.sql     # batch feature contract
+├── app.py
+├── engine.py
+├── sql/batch_features.sql
 ├── tests/test_engine.py
 ├── reports/evaluation.md
 ├── assets/dashboard-preview.svg
@@ -251,24 +270,11 @@ python engine.py --out artifacts
 streamlit run app.py
 ```
 
-Generated artifacts include the replay decision log and metrics JSON.
-
 ---
 
 ## What this project is demonstrating
 
-DecisionStream is built to show end-to-end thinking across:
-
-- Python ML pipelines
-- SQL and batch feature computation
-- streaming-style behavioral signals
-- classification and calibration
-- policy decisioning
-- champion/challenger deployment patterns
-- operational telemetry
-- latency / cost measurement
-- replay-based regression analysis
-- robust system integration boundaries
+DecisionStream shows end-to-end thinking across Python ML pipelines, SQL and batch feature computation, streaming-style behavioral signals, classification and calibration, policy decisioning, champion/challenger deployment patterns, operational telemetry, latency/cost measurement, replay-based regression analysis, and robust system-integration boundaries.
 
 ---
 
