@@ -1,0 +1,3 @@
+# DecisionStream
+
+Initializing project structure.
